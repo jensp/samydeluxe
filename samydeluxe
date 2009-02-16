@@ -1,36 +1,23 @@
-#!/usr/bin/python
-import os,re,commands
- 
-"""Simple script to automagically paste samdumps of Windows partitions in the users home dir.
-ATM it uses a lot of sudo because i want to go sure that no error happens because of permissions
-It's ugly I know but it will be changed ASAP"""
- 
-exec2=commands.getoutput
-username=os.getenv('USER')
-home=os.getenv('HOME')
-fdisk=exec2('sudo fdisk -l')
-fdiskR=re.compile('/dev/(\D+\d)[\s\*]+[\d\+]+\s+[\d\+]+\s+[\d\+]+\s+(\d+)')
- 
-devices=fdiskR.findall(fdisk)
- 
-def samdump(hd,windir,dumpfile):
-  sdumpR=re.compile('[Error|Cannot]')
-  sdumpE=exec2('samdump2 -o '+dumpfile+' /mnt/'+hd+'/'+windir+'/config/system /mnt/'+hd+'/'+windir+'/config/SAM')
-  print sdumpE
-  if sdumpR.match(sdumpE):
-    return None
-  else:
-    return 0
- 
- 
- 
-for hd in devices:
-  mkdirE=exec2('sudo mkdir /mnt/'+hd[0])
-        mountE=exec2('sudo mount -o umask=0000 /dev/'+hd[0]+' /mnt/'+hd[0])
-  mount2E=exec2('sudo mount /dev/'+hd[0]+' /mnt/'+hd[0])
-  for windir in os.listdir('/mnt/'+hd[0]):
-    if os.path.exists('/mnt/'+hd[0]+'/'+windir+'/System32') or os.path.exists('/mnt/'+hd[0]+'/'+windir+'/system32') or os.path.exists('/mnt/'+hd[0]+'/'+windir+'/SYSTEM32'):
-      dumpfile=home+'/samdump.'+hd[0]+'.'+windir
-      sdump=samdump(hd[0],windir+'/System32/',dumpfile)
-      if sdump==0:
-        print 'Samdump for /'+hd[0]+'/'+windir+' dumped in '+dumpfile
+#!/bin/bash
+# TODO: Figure out more intelligent umount command
+# Copyleft 2009 jensp <jens@jenux.homelinux.org> All Rites Reversed
+get_devices() {
+	sudo /sbin/fdisk -l |grep -e '^/' |awk '{print $1}'|sed -e "s|/dev/||g"
+}
+dump_sam() {
+	shopt -s nocaseglob
+	samdump2 -o ~/dump-$1 /mnt/$1/windows*/system32*/config*/syste[m] /mnt/$1/windows*/system32*/config*/sa[m]
+}
+for partition in $(get_devices)
+do
+	sudo mkdir -p /mnt/$partition
+	if sudo mount -t ntfs-3g /dev/$partition /mnt/$partition 2>/dev/null
+	then
+		dump_sam $partition && echo "sam dumped to $HOME/dump-$partition"
+		sleep 5 && sudo umount /mnt/$partition && sudo rmdir /mnt/$partition
+	elif sudo mount -t vfat /dev/$partition /mnt/$partition 2>/dev/null
+	then
+		dump_sam $partition && echo "sam dumped to $HOME/dump-$partition"
+		sleep 5 && sudo umount /mnt/$partition && sudo rmdir /mnt/$partition
+	fi
+done
